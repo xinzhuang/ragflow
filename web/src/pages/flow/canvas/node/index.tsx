@@ -1,41 +1,45 @@
-import { useCallback } from 'react';
-import { Handle, NodeProps, Position } from 'reactflow';
-
+import { useTheme } from '@/components/theme-provider';
+import { IRagNode } from '@/interfaces/database/flow';
+import { Handle, NodeProps, Position } from '@xyflow/react';
+import classNames from 'classnames';
+import { LeftHandleStyle, RightHandleStyle } from './handle-icon';
 import styles from './index.less';
+import NodeHeader from './node-header';
 
-const handleStyle = { left: 10 };
-
-export function TextUpdaterNode({
+export function RagNode({
+  id,
   data,
   isConnectable = true,
-}: NodeProps<{ value: number }>) {
-  const onChange = useCallback((evt) => {
-    console.log(evt.target.value);
-  }, []);
-
+  selected,
+}: NodeProps<IRagNode>) {
+  const { theme } = useTheme();
   return (
-    <div className={styles.textUpdaterNode}>
+    <section
+      className={classNames(
+        styles.ragNode,
+        theme === 'dark' ? styles.dark : '',
+        {
+          [styles.selectedNode]: selected,
+        },
+      )}
+    >
       <Handle
-        type="target"
-        position={Position.Top}
+        id="c"
+        type="source"
+        position={Position.Left}
         isConnectable={isConnectable}
-      />
+        className={styles.handle}
+        style={LeftHandleStyle}
+      ></Handle>
       <Handle
         type="source"
-        position={Position.Bottom}
-        // style={handleStyle}
+        position={Position.Right}
         isConnectable={isConnectable}
-      />
-      <div>
-        <label htmlFor="text">Text:</label>
-        <input id="text" name="text" onChange={onChange} className="nodrag" />
-      </div>
-      {/* <Handle
-        type="source"
-        position={Position.Bottom}
+        className={styles.handle}
         id="b"
-        isConnectable={isConnectable}
-      /> */}
-    </div>
+        style={RightHandleStyle}
+      ></Handle>
+      <NodeHeader id={id} name={data.name} label={data.label}></NodeHeader>
+    </section>
   );
 }

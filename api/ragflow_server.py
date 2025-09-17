@@ -14,87 +14,157 @@
 #  limitations under the License.
 #
 
+# from beartype import BeartypeConf
+# from beartype.claw import beartype_all  # <-- you didn't sign up for this
+# beartype_all(conf=BeartypeConf(violation_type=UserWarning))    # <-- emit warnings from all code
+
+from api.utils.log_utils import init_root_logger
+from plugin import GlobalPluginManager
+init_root_logger("ragflow_server")
+
 import logging
 import os
 import signal
 import sys
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor
+import threading
+import uuid
 
 from werkzeug.serving import run_simple
-from api.apps import app
+from api import settings
+from api.apps import app, smtp_mail_server
 from api.db.runtime_config import RuntimeConfig
 from api.db.services.document_service import DocumentService
-from api.settings import (
-    HOST, HTTP_PORT, access_logger, database_logger, stat_logger,
-)
 from api import utils
 
 from api.db.db_models import init_database_tables as init_web_db
 from api.db.init_data import init_web_data
-from api.versions import get_versions
+from api.versions import get_ragflow_version
+from api.utils import show_configs
+from rag.settings import print_rag_settings
+from rag.utils.mcp_tool_call_conn import shutdown_all_mcp_sessions
+from rag.utils.redis_conn import RedisDistributedLock
 
+stop_event = threading.Event()
+
+RAGFLOW_DEBUGPY_LISTEN = int(os.environ.get('RAGFLOW_DEBUGPY_LISTEN', "0"))
 
 def update_progress():
-    while True:
-        time.sleep(1)
+    lock_value = str(uuid.uuid4())
+    redis_lock = RedisDistributedLock("update_progress", lock_value=lock_value, timeout=60)
+    logging.info(f"update_progress lock_value: {lock_value}")
+    while not stop_event.is_set():
         try:
-            DocumentService.update_progress()
-        except Exception as e:
-            stat_logger.error("update_progress exception:" + str(e))
+            if redis_lock.acquire():
+                DocumentService.update_progress()
+                redis_lock.release()
+        except Exception:
+            logging.exception("update_progress exception")
+        finally:
+            try:
+                redis_lock.release()
+            except Exception:
+                logging.exception("update_progress exception")
+            stop_event.wait(6)
 
+def signal_handler(sig, frame):
+    logging.info("Received interrupt signal, shutting down...")
+    shutdown_all_mcp_sessions()
+    stop_event.set()
+    time.sleep(1)
+    sys.exit(0)
 
 if __name__ == '__main__':
-    print("""
-    ____                 ______ __               
-   / __ \ ____ _ ____ _ / ____// /____  _      __
-  / /_/ // __ `// __ `// /_   / // __ \| | /| / /
- / _, _// /_/ // /_/ // __/  / // /_/ /| |/ |/ / 
-/_/ |_| \__,_/ \__, //_/    /_/ \____/ |__/|__/  
-              /____/                             
+    logging.info(r"""
+        ____   ___    ______ ______ __
+       / __ \ /   |  / ____// ____// /____  _      __
+      / /_/ // /| | / / __ / /_   / // __ \| | /| / /
+     / _, _// ___ |/ /_/ // __/  / // /_/ /| |/ |/ /
+    /_/ |_|/_/  |_|\____//_/    /_/ \____/ |__/|__/
 
-    """, flush=True)
-    stat_logger.info(
+    """)
+    logging.info(
+        f'RAGFlow version: {get_ragflow_version()}'
+    )
+    logging.info(
         f'project base: {utils.file_utils.get_project_base_directory()}'
     )
+    show_configs()
+    settings.init_settings()
+    print_rag_settings()
+
+    if RAGFLOW_DEBUGPY_LISTEN > 0:
+        logging.info(f"debugpy listen on {RAGFLOW_DEBUGPY_LISTEN}")
+        import debugpy
+        debugpy.listen(("0.0.0.0", RAGFLOW_DEBUGPY_LISTEN))
 
     # init db
     init_web_db()
     init_web_data()
     # init runtime config
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--version', default=False, help="rag flow version", action='store_true')
-    parser.add_argument('--debug', default=False, help="debug mode", action='store_true')
+    parser.add_argument(
+        "--version", default=False, help="RAGFlow version", action="store_true"
+    )
+    parser.add_argument(
+        "--debug", default=False, help="debug mode", action="store_true"
+    )
     args = parser.parse_args()
     if args.version:
-        print(get_versions())
+        print(get_ragflow_version())
         sys.exit(0)
 
     RuntimeConfig.DEBUG = args.debug
     if RuntimeConfig.DEBUG:
-        stat_logger.info("run on debug mode")
+        logging.info("run on debug mode")
 
     RuntimeConfig.init_env()
-    RuntimeConfig.init_config(JOB_SERVER_HOST=HOST, HTTP_PORT=HTTP_PORT)
+    RuntimeConfig.init_config(JOB_SERVER_HOST=settings.HOST_IP, HTTP_PORT=settings.HOST_PORT)
 
-    peewee_logger = logging.getLogger('peewee')
-    peewee_logger.propagate = False
-    # rag_arch.common.log.ROpenHandler
-    peewee_logger.addHandler(database_logger.handlers[0])
-    peewee_logger.setLevel(database_logger.level)
+    GlobalPluginManager.load_plugins()
 
-    thr = ThreadPoolExecutor(max_workers=1)
-    thr.submit(update_progress)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    def delayed_start_update_progress():
+        logging.info("Starting update_progress thread (delayed)")
+        t = threading.Thread(target=update_progress, daemon=True)
+        t.start()
+
+    if RuntimeConfig.DEBUG:
+        if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            threading.Timer(1.0, delayed_start_update_progress).start()
+    else:
+        threading.Timer(1.0, delayed_start_update_progress).start()
+
+    # init smtp server
+    if settings.SMTP_CONF:
+        app.config["MAIL_SERVER"] = settings.MAIL_SERVER
+        app.config["MAIL_PORT"] = settings.MAIL_PORT
+        app.config["MAIL_USE_SSL"] = settings.MAIL_USE_SSL
+        app.config["MAIL_USE_TLS"] = settings.MAIL_USE_TLS
+        app.config["MAIL_USERNAME"] = settings.MAIL_USERNAME
+        app.config["MAIL_PASSWORD"] = settings.MAIL_PASSWORD
+        app.config["MAIL_DEFAULT_SENDER"] = settings.MAIL_DEFAULT_SENDER
+        smtp_mail_server.init_app(app)
+
 
     # start http server
     try:
-        stat_logger.info("RAG Flow http server start...")
-        werkzeug_logger = logging.getLogger("werkzeug")
-        for h in access_logger.handlers:
-            werkzeug_logger.addHandler(h)
-        run_simple(hostname=HOST, port=HTTP_PORT, application=app, threaded=True, use_reloader=RuntimeConfig.DEBUG, use_debugger=RuntimeConfig.DEBUG)
+        logging.info("RAGFlow HTTP server start...")
+        run_simple(
+            hostname=settings.HOST_IP,
+            port=settings.HOST_PORT,
+            application=app,
+            threaded=True,
+            use_reloader=RuntimeConfig.DEBUG,
+            use_debugger=RuntimeConfig.DEBUG,
+        )
     except Exception:
         traceback.print_exc()
+        stop_event.set()
+        time.sleep(1)
         os.kill(os.getpid(), signal.SIGKILL)

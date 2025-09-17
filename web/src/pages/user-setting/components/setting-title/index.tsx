@@ -1,4 +1,4 @@
-import { useTranslate } from '@/hooks/commonHooks';
+import { useTranslate } from '@/hooks/common-hooks';
 import { SettingOutlined } from '@ant-design/icons';
 import { Button, Flex, Typography } from 'antd';
 
@@ -27,7 +27,10 @@ const SettingTitle = ({
       </div>
       {showRightButton && (
         <Button type={'primary'} onClick={clickButton}>
-          <SettingOutlined></SettingOutlined> {t('systemModelSettings')}
+          <Flex align="center" gap={4}>
+            <SettingOutlined />
+            {t('systemModelSettings')}
+          </Flex>
         </Button>
       )}
     </Flex>

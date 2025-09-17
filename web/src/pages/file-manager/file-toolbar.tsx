@@ -1,5 +1,8 @@
-import { ReactComponent as DeleteIcon } from '@/assets/svg/delete.svg';
-import { useTranslate } from '@/hooks/commonHooks';
+import { useTranslate } from '@/hooks/common-hooks';
+import {
+  IListResult,
+  useFetchParentFolderList,
+} from '@/hooks/file-manager-hooks';
 import {
   DownOutlined,
   FileTextOutlined,
@@ -17,23 +20,23 @@ import {
   MenuProps,
   Space,
 } from 'antd';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
-  useFetchDocumentListOnMount,
   useHandleBreadcrumbClick,
   useHandleDeleteFile,
-  useHandleSearchChange,
   useSelectBreadcrumbItems,
 } from './hooks';
 
-import { useSelectParentFolderList } from '@/hooks/fileManagerHooks';
+import { FolderInput, Trash2 } from 'lucide-react';
 import styles from './index.less';
 
-interface IProps {
+interface IProps
+  extends Pick<IListResult, 'searchString' | 'handleInputChange'> {
   selectedRowKeys: string[];
   showFolderCreateModal: () => void;
   showFileUploadModal: () => void;
   setSelectedRowKeys: (keys: string[]) => void;
+  showMoveFileModal: (ids: string[]) => void;
 }
 
 const FileToolbar = ({
@@ -41,13 +44,14 @@ const FileToolbar = ({
   showFolderCreateModal,
   showFileUploadModal,
   setSelectedRowKeys,
+  searchString,
+  handleInputChange,
+  showMoveFileModal,
 }: IProps) => {
   const { t } = useTranslate('knowledgeDetails');
-  useFetchDocumentListOnMount();
-  const { handleInputChange, searchString } = useHandleSearchChange();
   const breadcrumbItems = useSelectBreadcrumbItems();
   const { handleBreadcrumbClick } = useHandleBreadcrumbClick();
-  const parentFolderList = useSelectParentFolderList();
+  const parentFolderList = useFetchParentFolderList();
   const isKnowledgeBase =
     parentFolderList.at(-1)?.source_type === 'knowledgebase';
 
@@ -109,6 +113,10 @@ const FileToolbar = ({
     setSelectedRowKeys,
   );
 
+  const handleShowMoveFileModal = useCallback(() => {
+    showMoveFileModal(selectedRowKeys);
+  }, [selectedRowKeys, showMoveFileModal]);
+
   const disabled = selectedRowKeys.length === 0;
 
   const items: MenuProps['items'] = useMemo(() => {
@@ -118,15 +126,27 @@ const FileToolbar = ({
         onClick: handleRemoveFile,
         label: (
           <Flex gap={10}>
-            <span className={styles.deleteIconWrapper}>
-              <DeleteIcon width={18} />
+            <span className="flex items-center justify-center">
+              <Trash2 className="size-4" />
             </span>
             <b>{t('delete', { keyPrefix: 'common' })}</b>
           </Flex>
         ),
       },
+      {
+        key: '5',
+        onClick: handleShowMoveFileModal,
+        label: (
+          <Flex gap={10}>
+            <span className="flex items-center justify-center">
+              <FolderInput className="size-4"></FolderInput>
+            </span>
+            <b>{t('move', { keyPrefix: 'common' })}</b>
+          </Flex>
+        ),
+      },
     ];
-  }, [handleRemoveFile, t]);
+  }, [handleShowMoveFileModal, t, handleRemoveFile]);
 
   return (
     <div className={styles.filter}>

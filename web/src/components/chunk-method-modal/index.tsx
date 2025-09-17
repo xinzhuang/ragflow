@@ -1,7 +1,5 @@
 import MaxTokenNumber from '@/components/max-token-number';
 import { IModalManagerChildrenProps } from '@/components/modal-manager';
-import { IKnowledgeFileParserConfig } from '@/interfaces/database/knowledge';
-import { IChangeParserConfigRequestBody } from '@/interfaces/request/document';
 import {
   MinusCircleOutlined,
   PlusOutlined,
@@ -19,29 +17,50 @@ import {
 } from 'antd';
 import omit from 'lodash/omit';
 import React, { useEffect, useMemo } from 'react';
-import { useFetchParserListOnMount } from './hooks';
+import { useFetchParserListOnMount, useShowAutoKeywords } from './hooks';
 
-import { useTranslate } from '@/hooks/commonHooks';
+import { DocumentParserType } from '@/constants/knowledge';
+import { useTranslate } from '@/hooks/common-hooks';
+import { useFetchKnowledgeBaseConfiguration } from '@/hooks/knowledge-hooks';
+import { IParserConfig } from '@/interfaces/database/document';
+import { IChangeParserConfigRequestBody } from '@/interfaces/request/document';
+import { get } from 'lodash';
+import { AutoKeywordsItem, AutoQuestionsItem } from '../auto-keywords-item';
+import { DatasetConfigurationContainer } from '../dataset-configuration-container';
+import Delimiter from '../delimiter';
+import EntityTypesItem from '../entity-types-item';
+import ExcelToHtml from '../excel-to-html';
 import LayoutRecognize from '../layout-recognize';
 import ParseConfiguration, {
   showRaptorParseConfiguration,
 } from '../parse-configuration';
+import {
+  UseGraphRagItem,
+  showGraphRagItems,
+} from '../parse-configuration/graph-rag-items';
 import styles from './index.less';
 
 interface IProps extends Omit<IModalManagerChildrenProps, 'showModal'> {
   loading: boolean;
   onOk: (
-    parserId: string,
+    parserId: DocumentParserType | undefined,
     parserConfig: IChangeParserConfigRequestBody,
   ) => void;
   showModal?(): void;
-  parserId: string;
-  parserConfig: IKnowledgeFileParserConfig;
+  parserId: DocumentParserType;
+  parserConfig: IParserConfig;
   documentExtension: string;
   documentId: string;
 }
 
-const hidePagesChunkMethods = ['qa', 'table', 'picture', 'resume', 'one'];
+const hidePagesChunkMethods = [
+  DocumentParserType.Qa,
+  DocumentParserType.Table,
+  DocumentParserType.Picture,
+  DocumentParserType.Resume,
+  DocumentParserType.One,
+  DocumentParserType.KnowledgeGraph,
+];
 
 const ChunkMethodModal: React.FC<IProps> = ({
   documentId,
@@ -53,13 +72,19 @@ const ChunkMethodModal: React.FC<IProps> = ({
   parserConfig,
   loading,
 }) => {
+  const [form] = Form.useForm();
   const { parserList, handleChange, selectedTag } = useFetchParserListOnMount(
     documentId,
     parserId,
     documentExtension,
+    form,
   );
-  const [form] = Form.useForm();
   const { t } = useTranslate('knowledgeDetails');
+  const { data: knowledgeDetails } = useFetchKnowledgeBaseConfiguration();
+
+  const useGraphRag = useMemo(() => {
+    return knowledgeDetails.parser_config?.graphrag?.use_graphrag;
+  }, [knowledgeDetails.parser_config?.graphrag?.use_graphrag]);
 
   const handleOk = async () => {
     const values = await form.validateFields();
@@ -80,16 +105,21 @@ const ChunkMethodModal: React.FC<IProps> = ({
     return (
       isPdf &&
       hidePagesChunkMethods
-        .filter((x) => x !== 'one')
+        .filter((x) => x !== DocumentParserType.One)
         .every((x) => x !== selectedTag)
     );
   }, [selectedTag, isPdf]);
 
-  const showMaxTokenNumber = selectedTag === 'naive';
+  const showMaxTokenNumber =
+    selectedTag === DocumentParserType.Naive ||
+    selectedTag === DocumentParserType.KnowledgeGraph;
 
-  const hideDivider = [showPages, showOne, showMaxTokenNumber].every(
-    (x) => x === false,
-  );
+  const showEntityTypes = selectedTag === DocumentParserType.KnowledgeGraph;
+
+  const showExcelToHtml =
+    selectedTag === DocumentParserType.Naive && documentExtension === 'xlsx';
+
+  const showAutoKeywords = useShowAutoKeywords();
 
   const afterClose = () => {
     form.resetFields();
@@ -98,13 +128,28 @@ const ChunkMethodModal: React.FC<IProps> = ({
   useEffect(() => {
     if (visible) {
       const pages =
-        parserConfig.pages?.map((x) => ({ from: x[0], to: x[1] })) ?? [];
+        parserConfig?.pages?.map((x) => ({ from: x[0], to: x[1] })) ?? [];
       form.setFieldsValue({
         pages: pages.length > 0 ? pages : [{ from: 1, to: 1024 }],
-        parser_config: omit(parserConfig, 'pages'),
+        parser_config: {
+          ...omit(parserConfig, 'pages'),
+          graphrag: {
+            use_graphrag: get(
+              parserConfig,
+              'graphrag.use_graphrag',
+              useGraphRag,
+            ),
+          },
+        },
       });
     }
-  }, [form, parserConfig, visible]);
+  }, [
+    form,
+    knowledgeDetails.parser_config,
+    parserConfig,
+    useGraphRag,
+    visible,
+  ]);
 
   return (
     <Modal
@@ -119,15 +164,20 @@ const ChunkMethodModal: React.FC<IProps> = ({
       <Space size={[0, 8]} wrap>
         <Form.Item label={t('chunkMethod')} className={styles.chunkMethod}>
           <Select
-            style={{ width: 120 }}
+            style={{ width: 160 }}
             onChange={handleChange}
             value={selectedTag}
             options={parserList}
           />
         </Form.Item>
       </Space>
-      {hideDivider || <Divider></Divider>}
-      <Form name="dynamic_form_nest_item" autoComplete="off" form={form}>
+      <Divider></Divider>
+      <Form
+        name="dynamic_form_nest_item"
+        autoComplete="off"
+        form={form}
+        className="space-y-4"
+      >
         {showPages && (
           <>
             <Space>
@@ -232,7 +282,7 @@ const ChunkMethodModal: React.FC<IProps> = ({
             </Form.List>
           </>
         )}
-        {showOne && <LayoutRecognize></LayoutRecognize>}
+
         {showPages && (
           <Form.Item
             noStyle
@@ -258,10 +308,41 @@ const ChunkMethodModal: React.FC<IProps> = ({
             }
           </Form.Item>
         )}
-        {showMaxTokenNumber && <MaxTokenNumber></MaxTokenNumber>}
+        <DatasetConfigurationContainer show={showOne || showMaxTokenNumber}>
+          {showOne && <LayoutRecognize></LayoutRecognize>}
+          {showMaxTokenNumber && (
+            <>
+              <MaxTokenNumber
+                max={
+                  selectedTag === DocumentParserType.KnowledgeGraph
+                    ? 8192 * 2
+                    : 2048
+                }
+              ></MaxTokenNumber>
+              <Delimiter></Delimiter>
+            </>
+          )}
+        </DatasetConfigurationContainer>
+        <DatasetConfigurationContainer
+          show={showAutoKeywords(selectedTag) || showExcelToHtml}
+        >
+          {showAutoKeywords(selectedTag) && (
+            <>
+              <AutoKeywordsItem></AutoKeywordsItem>
+              <AutoQuestionsItem></AutoQuestionsItem>
+            </>
+          )}
+          {showExcelToHtml && <ExcelToHtml></ExcelToHtml>}
+        </DatasetConfigurationContainer>
         {showRaptorParseConfiguration(selectedTag) && (
-          <ParseConfiguration></ParseConfiguration>
+          <DatasetConfigurationContainer>
+            <ParseConfiguration></ParseConfiguration>
+          </DatasetConfigurationContainer>
         )}
+        {showGraphRagItems(selectedTag) && useGraphRag && (
+          <UseGraphRagItem></UseGraphRagItem>
+        )}
+        {showEntityTypes && <EntityTypesItem></EntityTypesItem>}
       </Form>
     </Modal>
   );

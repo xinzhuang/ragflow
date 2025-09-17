@@ -1,105 +1,21 @@
-import { useSetModalState, useTranslate } from '@/hooks/commonHooks';
+import { useSetModalState } from '@/hooks/common-hooks';
 import {
-  useCreateDocument,
-  useFetchDocumentList,
-  useRunDocument,
-  useSaveDocumentName,
-  useSelectRunDocumentLoading,
-  useSetDocumentParser,
-  useUploadDocument,
-} from '@/hooks/documentHooks';
-import { useGetKnowledgeSearchParams } from '@/hooks/routeHook';
-import { useOneNamespaceEffectsLoading } from '@/hooks/storeHooks';
-import { useFetchTenantInfo } from '@/hooks/userSettingHook';
-import { Pagination } from '@/interfaces/common';
+  useCreateNextDocument,
+  useNextWebCrawl,
+  useRunNextDocument,
+  useSaveNextDocumentName,
+  useSetDocumentMeta,
+  useSetNextDocumentParser,
+  useUploadNextDocument,
+} from '@/hooks/document-hooks';
+import { useGetKnowledgeSearchParams } from '@/hooks/route-hook';
+import { IDocumentInfo } from '@/interfaces/database/document';
 import { IChangeParserConfigRequestBody } from '@/interfaces/request/document';
-import { getUnSupportedFilesCount } from '@/utils/documentUtils';
-import { PaginationProps, UploadFile } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useDispatch, useNavigate, useSelector } from 'umi';
+import { UploadFile } from 'antd';
+import { TableRowSelection } from 'antd/es/table/interface';
+import { useCallback, useState } from 'react';
+import { useNavigate } from 'umi';
 import { KnowledgeRouteKey } from './constant';
-
-export const useFetchDocumentListOnMount = () => {
-  const { knowledgeId } = useGetKnowledgeSearchParams();
-  const fetchDocumentList = useFetchDocumentList();
-  const dispatch = useDispatch();
-
-  useFetchTenantInfo();
-
-  useEffect(() => {
-    if (knowledgeId) {
-      fetchDocumentList();
-      dispatch({
-        type: 'kFModel/pollGetDocumentList-start',
-        payload: knowledgeId,
-      });
-    }
-    return () => {
-      dispatch({
-        type: 'kFModel/pollGetDocumentList-stop',
-      });
-    };
-  }, [knowledgeId, dispatch, fetchDocumentList]);
-
-  return { fetchDocumentList };
-};
-
-export const useGetPagination = (fetchDocumentList: () => void) => {
-  const dispatch = useDispatch();
-  const kFModel = useSelector((state: any) => state.kFModel);
-  const { t } = useTranslate('common');
-
-  const setPagination = useCallback(
-    (pageNumber = 1, pageSize?: number) => {
-      const pagination: Pagination = {
-        current: pageNumber,
-      } as Pagination;
-      if (pageSize) {
-        pagination.pageSize = pageSize;
-      }
-      dispatch({
-        type: 'kFModel/setPagination',
-        payload: pagination,
-      });
-    },
-    [dispatch],
-  );
-
-  const onPageChange: PaginationProps['onChange'] = useCallback(
-    (pageNumber: number, pageSize: number) => {
-      setPagination(pageNumber, pageSize);
-      fetchDocumentList();
-    },
-    [fetchDocumentList, setPagination],
-  );
-
-  const pagination: PaginationProps = useMemo(() => {
-    return {
-      showQuickJumper: true,
-      total: kFModel.total,
-      showSizeChanger: true,
-      current: kFModel.pagination.current,
-      pageSize: kFModel.pagination.pageSize,
-      pageSizeOptions: [1, 2, 10, 20, 50, 100],
-      onChange: onPageChange,
-      showTotal: (total) => `${t('total')} ${total}`,
-    };
-  }, [kFModel, onPageChange, t]);
-
-  return {
-    pagination,
-    setPagination,
-    total: kFModel.total,
-    searchString: kFModel.searchString,
-  };
-};
-
-export const useSelectDocumentListLoading = () => {
-  return useOneNamespaceEffectsLoading('kFModel', [
-    'getKfList',
-    'updateDocumentStatus',
-  ]);
-};
 
 export const useNavigateToOtherPage = () => {
   const navigate = useNavigate();
@@ -121,43 +37,18 @@ export const useNavigateToOtherPage = () => {
   return { linkToUploadPage, toChunk };
 };
 
-export const useHandleSearchChange = (setPagination: () => void) => {
-  const dispatch = useDispatch();
-  const { knowledgeId } = useGetKnowledgeSearchParams();
-
-  const throttledGetDocumentList = useCallback(() => {
-    dispatch({
-      type: 'kFModel/throttledGetDocumentList',
-      payload: knowledgeId,
-    });
-  }, [dispatch, knowledgeId]);
-
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const value = e.target.value;
-      dispatch({ type: 'kFModel/setSearchString', payload: value });
-      setPagination();
-      throttledGetDocumentList();
-    },
-    [setPagination, throttledGetDocumentList, dispatch],
-  );
-
-  return { handleInputChange };
-};
-
 export const useRenameDocument = (documentId: string) => {
-  const saveName = useSaveDocumentName();
+  const { saveName, loading } = useSaveNextDocumentName();
 
   const {
     visible: renameVisible,
     hideModal: hideRenameModal,
     showModal: showRenameModal,
   } = useSetModalState();
-  const loading = useOneNamespaceEffectsLoading('kFModel', ['document_rename']);
 
   const onRenameOk = useCallback(
     async (name: string) => {
-      const ret = await saveName(documentId, name);
+      const ret = await saveName({ documentId, name });
       if (ret === 0) {
         hideRenameModal();
       }
@@ -175,14 +66,13 @@ export const useRenameDocument = (documentId: string) => {
 };
 
 export const useCreateEmptyDocument = () => {
-  const createDocument = useCreateDocument();
+  const { createDocument, loading } = useCreateNextDocument();
 
   const {
     visible: createVisible,
     hideModal: hideCreateModal,
     showModal: showCreateModal,
   } = useSetModalState();
-  const loading = useOneNamespaceEffectsLoading('kFModel', ['document_create']);
 
   const onCreateOk = useCallback(
     async (name: string) => {
@@ -204,20 +94,21 @@ export const useCreateEmptyDocument = () => {
 };
 
 export const useChangeDocumentParser = (documentId: string) => {
-  const setDocumentParser = useSetDocumentParser();
+  const { setDocumentParser, loading } = useSetNextDocumentParser();
 
   const {
     visible: changeParserVisible,
     hideModal: hideChangeParserModal,
     showModal: showChangeParserModal,
   } = useSetModalState();
-  const loading = useOneNamespaceEffectsLoading('kFModel', [
-    'document_change_parser',
-  ]);
 
   const onChangeParserOk = useCallback(
     async (parserId: string, parserConfig: IChangeParserConfigRequestBody) => {
-      const ret = await setDocumentParser(parserId, documentId, parserConfig);
+      const ret = await setDocumentParser({
+        parserId,
+        documentId,
+        parserConfig,
+      });
       if (ret === 0) {
         hideChangeParserModal();
       }
@@ -237,7 +128,7 @@ export const useChangeDocumentParser = (documentId: string) => {
 export const useGetRowSelection = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
-  const rowSelection = {
+  const rowSelection: TableRowSelection<IDocumentInfo> = {
     selectedRowKeys,
     onChange: (newSelectedRowKeys: React.Key[]) => {
       setSelectedRowKeys(newSelectedRowKeys);
@@ -253,29 +144,119 @@ export const useHandleUploadDocument = () => {
     hideModal: hideDocumentUploadModal,
     showModal: showDocumentUploadModal,
   } = useSetModalState();
-  const uploadDocument = useUploadDocument();
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const { uploadDocument, loading } = useUploadNextDocument();
+  const { runDocumentByIds } = useRunNextDocument();
 
   const onDocumentUploadOk = useCallback(
-    async (fileList: UploadFile[]): Promise<number | undefined> => {
-      if (fileList.length > 0) {
-        const ret: any = await uploadDocument(fileList);
-        const count = getUnSupportedFilesCount(ret.retmsg);
-        /// 500 error code indicates that some file types are not supported
-        let retcode = ret.retcode;
-        if (
-          ret.retcode === 0 ||
-          (ret.retcode === 500 && count !== fileList.length) // Some files were not uploaded successfully, but some were uploaded successfully.
-        ) {
-          retcode = 0;
+    async ({
+      parseOnCreation,
+      directoryFileList,
+    }: {
+      directoryFileList: UploadFile[];
+      parseOnCreation: boolean;
+    }): Promise<number | undefined> => {
+      const processFileGroup = async (filesPart: UploadFile[]) => {
+        // set status to uploading on files
+        setFileList(
+          fileList.map((file) => {
+            if (!filesPart.includes(file)) {
+              return file;
+            }
+
+            let newFile = file;
+            newFile.status = 'uploading';
+            newFile.percent = 1;
+            return newFile;
+          }),
+        );
+
+        const ret = await uploadDocument(filesPart);
+
+        const files = ret?.data || [];
+        const successfulFilenames = files.map((file: any) => file.name);
+
+        // set status to done or error on files (based on response)
+        setFileList(
+          fileList.map((file) => {
+            if (!filesPart.includes(file)) {
+              return file;
+            }
+
+            let newFile = file;
+            newFile.status = successfulFilenames.includes(file.name)
+              ? 'done'
+              : 'error';
+            newFile.percent = 100;
+            newFile.response = ret.message;
+            return newFile;
+          }),
+        );
+
+        return {
+          code: ret?.code,
+          fileIds: files.map((file: any) => file.id),
+          totalSuccess: successfulFilenames.length,
+        };
+      };
+      const totalFiles = fileList.length;
+
+      if (directoryFileList.length > 0) {
+        const ret = await uploadDocument(directoryFileList);
+        if (ret?.code === 0) {
           hideDocumentUploadModal();
         }
-        return retcode;
+        if (totalFiles === 0) {
+          return 0;
+        }
       }
-    },
-    [uploadDocument, hideDocumentUploadModal],
-  );
 
-  const loading = useOneNamespaceEffectsLoading('kFModel', ['upload_document']);
+      if (totalFiles === 0) {
+        console.log('No files to upload');
+        hideDocumentUploadModal();
+        return 0;
+      }
+
+      let totalSuccess = 0;
+      let codes = [];
+      let toRunFileIds: any[] = [];
+      for (let i = 0; i < totalFiles; i += 10) {
+        setUploadProgress(Math.floor((i / totalFiles) * 100));
+        const files = fileList.slice(i, i + 10);
+        const {
+          code,
+          totalSuccess: count,
+          fileIds,
+        } = await processFileGroup(files);
+        codes.push(code);
+        totalSuccess += count;
+        toRunFileIds = toRunFileIds.concat(fileIds);
+      }
+
+      const allSuccess = codes.every((code) => code === 0);
+      const any500 = codes.some((code) => code === 500);
+
+      let code = 500;
+      if (allSuccess || (any500 && totalSuccess === totalFiles)) {
+        code = 0;
+        hideDocumentUploadModal();
+      }
+
+      if (parseOnCreation) {
+        await runDocumentByIds({
+          documentIds: toRunFileIds,
+          run: 1,
+          shouldDelete: false,
+        });
+      }
+
+      setUploadProgress(100);
+
+      return code;
+    },
+    [fileList, uploadDocument, hideDocumentUploadModal, runDocumentByIds],
+  );
 
   return {
     documentUploadLoading: loading,
@@ -283,19 +264,51 @@ export const useHandleUploadDocument = () => {
     documentUploadVisible,
     hideDocumentUploadModal,
     showDocumentUploadModal,
+    uploadFileList: fileList,
+    setUploadFileList: setFileList,
+    uploadProgress,
+    setUploadProgress,
+  };
+};
+
+export const useHandleWebCrawl = () => {
+  const {
+    visible: webCrawlUploadVisible,
+    hideModal: hideWebCrawlUploadModal,
+    showModal: showWebCrawlUploadModal,
+  } = useSetModalState();
+  const { webCrawl, loading } = useNextWebCrawl();
+
+  const onWebCrawlUploadOk = useCallback(
+    async (name: string, url: string) => {
+      const ret = await webCrawl({ name, url });
+      if (ret === 0) {
+        hideWebCrawlUploadModal();
+        return 0;
+      }
+      return -1;
+    },
+    [webCrawl, hideWebCrawlUploadModal],
+  );
+
+  return {
+    webCrawlUploadLoading: loading,
+    onWebCrawlUploadOk,
+    webCrawlUploadVisible,
+    hideWebCrawlUploadModal,
+    showWebCrawlUploadModal,
   };
 };
 
 export const useHandleRunDocumentByIds = (id: string) => {
-  const loading = useSelectRunDocumentLoading();
-  const runDocumentByIds = useRunDocument();
+  const { runDocumentByIds, loading } = useRunNextDocument();
   const [currentId, setCurrentId] = useState<string>('');
   const isLoading = loading && currentId !== '' && currentId === id;
 
   const handleRunDocumentByIds = async (
     documentId: string,
-    knowledgeBaseId: string,
     isRunning: boolean,
+    shouldDelete: boolean = false,
   ) => {
     if (isLoading) {
       return;
@@ -303,9 +316,9 @@ export const useHandleRunDocumentByIds = (id: string) => {
     setCurrentId(documentId);
     try {
       await runDocumentByIds({
-        doc_ids: [documentId],
+        documentIds: [documentId],
         run: isRunning ? 2 : 1,
-        knowledgeBaseId,
+        shouldDelete,
       });
       setCurrentId('');
     } catch (error) {
@@ -316,5 +329,36 @@ export const useHandleRunDocumentByIds = (id: string) => {
   return {
     handleRunDocumentByIds,
     loading: isLoading,
+  };
+};
+
+export const useShowMetaModal = (documentId: string) => {
+  const { setDocumentMeta, loading } = useSetDocumentMeta();
+
+  const {
+    visible: setMetaVisible,
+    hideModal: hideSetMetaModal,
+    showModal: showSetMetaModal,
+  } = useSetModalState();
+
+  const onSetMetaModalOk = useCallback(
+    async (meta: string) => {
+      const ret = await setDocumentMeta({
+        documentId,
+        meta,
+      });
+      if (ret === 0) {
+        hideSetMetaModal();
+      }
+    },
+    [setDocumentMeta, documentId, hideSetMetaModal],
+  );
+
+  return {
+    setMetaLoading: loading,
+    onSetMetaModalOk,
+    setMetaVisible,
+    hideSetMetaModal,
+    showSetMetaModal,
   };
 };

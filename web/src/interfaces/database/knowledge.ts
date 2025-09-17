@@ -1,4 +1,5 @@
 import { RunningStatus } from '@/constants/knowledge';
+import { TreeData } from '@antv/g6/lib/types';
 
 // knowledge base
 export interface IKnowledge {
@@ -11,7 +12,7 @@ export interface IKnowledge {
   doc_num: number;
   id: string;
   name: string;
-  parser_config: Parserconfig;
+  parser_config: ParserConfig;
   parser_id: string;
   permission: string;
   similarity_threshold: number;
@@ -21,11 +22,34 @@ export interface IKnowledge {
   update_date: string;
   update_time: number;
   vector_similarity_weight: number;
+  embd_id: string;
+  nickname: string;
+  operator_permission: number;
+  size: number;
 }
 
-export interface Parserconfig {
-  from_page: number;
-  to_page: number;
+export interface IKnowledgeResult {
+  kbs: IKnowledge[];
+  total: number;
+}
+
+export interface Raptor {
+  use_raptor: boolean;
+}
+
+export interface ParserConfig {
+  from_page?: number;
+  to_page?: number;
+  auto_keywords?: number;
+  auto_questions?: number;
+  chunk_token_num?: number;
+  delimiter?: string;
+  html4excel?: boolean;
+  layout_recognize?: boolean;
+  raptor?: Raptor;
+  tag_kb_ids?: string[];
+  topn_tags?: number;
+  graphrag?: { use_graphrag?: boolean };
 }
 
 export interface IKnowledgeFileParserConfig {
@@ -45,7 +69,7 @@ export interface IKnowledgeFile {
   name: string;
   parser_id: string;
   process_begin_at?: any;
-  process_duation: number;
+  process_duration: number;
   progress: number; // parsing process
   progress_msg: string; // parsing log
   run: RunningStatus; // parsing status
@@ -71,6 +95,7 @@ export interface ITenantInfo {
   tenant_id: string;
   chat_id: string;
   speech2text_id: string;
+  tts_id: string;
 }
 
 export interface IChunk {
@@ -78,10 +103,13 @@ export interface IChunk {
   chunk_id: string;
   content_with_weight: string;
   doc_id: string;
-  docnm_kwd: string;
-  img_id: string;
-  important_kwd: any[];
+  doc_name: string;
+  image_id: string;
+  important_kwd?: string[];
+  question_kwd?: string[]; // keywords
+  tag_kwd?: string[];
   positions: number[][];
+  tag_feas?: Record<string, number>;
 }
 
 export interface ITestingChunk {
@@ -89,14 +117,19 @@ export interface ITestingChunk {
   content_ltks: string;
   content_with_weight: string;
   doc_id: string;
-  docnm_kwd: string;
+  doc_name: string;
   img_id: string;
+  image_id: string;
   important_kwd: any[];
   kb_id: string;
   similarity: number;
   term_similarity: number;
   vector: number[];
   vector_similarity: number;
+  highlight: string;
+  positions: number[][];
+  docnm_kwd: string;
+  doc_type_kwd: string;
 }
 
 export interface ITestingDocument {
@@ -107,6 +140,22 @@ export interface ITestingDocument {
 
 export interface ITestingResult {
   chunks: ITestingChunk[];
-  doc_aggs: Record<string, number>;
+  documents: ITestingDocument[];
   total: number;
+  labels?: Record<string, number>;
+}
+
+export interface INextTestingResult {
+  chunks: ITestingChunk[];
+  doc_aggs: ITestingDocument[];
+  total: number;
+  labels?: Record<string, number>;
+  isRuned?: boolean;
+}
+
+export type IRenameTag = { fromTag: string; toTag: string };
+
+export interface IKnowledgeGraph {
+  graph: Record<string, any>;
+  mind_map: TreeData;
 }

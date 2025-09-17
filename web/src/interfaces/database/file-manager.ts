@@ -13,6 +13,7 @@ export interface IFile {
   update_date: string;
   update_time: number;
   source_type: string;
+  has_child_folder?: boolean;
 }
 
 export interface IFolder {
@@ -30,3 +31,9 @@ export interface IFolder {
   update_time: number;
   source_type: string;
 }
+
+export type IFetchFileListResult = {
+  files: IFile[];
+  parent_folder: IFolder;
+  total: number;
+};

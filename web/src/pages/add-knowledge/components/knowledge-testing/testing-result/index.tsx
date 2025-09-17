@@ -1,21 +1,23 @@
 import { ReactComponent as SelectedFilesCollapseIcon } from '@/assets/svg/selected-files-collapse.svg';
-import Image from '@/components/image';
-import { useTranslate } from '@/hooks/commonHooks';
-import { ITestingChunk } from '@/interfaces/database/knowledge';
+import { useTranslate } from '@/hooks/common-hooks';
+import { ITestingChunk, ITestingResult } from '@/interfaces/database/knowledge';
 import {
   Card,
   Collapse,
+  Empty,
   Flex,
+  Image,
   Pagination,
   PaginationProps,
-  Popover,
   Space,
 } from 'antd';
 import camelCase from 'lodash/camelCase';
-import { useDispatch, useSelector } from 'umi';
-import { TestingModelState } from '../model';
 import SelectFiles from './select-files';
 
+import { useGetPaginationWithRouter } from '@/hooks/logic-hooks';
+import { api_host } from '@/utils/api';
+import { showImage } from '@/utils/chat';
+import { useCallback } from 'react';
 import styles from './index.less';
 
 const similarityList: Array<{ field: keyof ITestingChunk; label: string }> = [
@@ -41,28 +43,36 @@ const ChunkTitle = ({ item }: { item: ITestingChunk }) => {
 };
 
 interface IProps {
-  handleTesting: () => Promise<any>;
+  handleTesting: (documentIds?: string[]) => Promise<any>;
+  selectedDocumentIds: string[];
+  setSelectedDocumentIds: (ids: string[]) => void;
+  data?: ITestingResult;
+  loading?: boolean;
 }
 
-const TestingResult = ({ handleTesting }: IProps) => {
-  const {
-    documents,
-    chunks,
-    total,
-    pagination,
-    selectedDocumentIds,
-  }: TestingModelState = useSelector((state: any) => state.testingModel);
-  const dispatch = useDispatch();
+const TestingResult = ({
+  handleTesting,
+  selectedDocumentIds,
+  setSelectedDocumentIds,
+  data,
+  loading,
+}: IProps) => {
+  const { documents, chunks, total } = data || {};
   const { t } = useTranslate('knowledgeDetails');
+  const { pagination, setPagination } = useGetPaginationWithRouter();
 
   const onChange: PaginationProps['onChange'] = (pageNumber, pageSize) => {
-    console.log('Page: ', pageNumber, pageSize);
-    dispatch({
-      type: 'testingModel/setPagination',
-      payload: { current: pageNumber, pageSize },
-    });
-    handleTesting();
+    pagination.onChange?.(pageNumber, pageSize);
+    handleTesting(selectedDocumentIds);
   };
+
+  const onTesting = useCallback(
+    (ids: string[]) => {
+      setPagination({ page: 1 });
+      handleTesting(ids);
+    },
+    [setPagination, handleTesting],
+  );
 
   return (
     <section className={styles.testingResultWrapper}>
@@ -82,19 +92,18 @@ const TestingResult = ({ handleTesting }: IProps) => {
               >
                 <Space>
                   <span>
-                    {selectedDocumentIds?.length ?? 0}/{documents.length}
+                    {selectedDocumentIds?.length ?? 0}/{documents?.length ?? 0}
                   </span>
                   {t('filesSelected')}
-                </Space>
-                <Space size={52}>
-                  <b>{t('hits')}</b>
-                  <b>{t('view')}</b>
                 </Space>
               </Flex>
             ),
             children: (
               <div>
-                <SelectFiles handleTesting={handleTesting}></SelectFiles>
+                <SelectFiles
+                  setSelectedDocumentIds={setSelectedDocumentIds}
+                  handleTesting={onTesting}
+                ></SelectFiles>
               </div>
             ),
           },
@@ -106,34 +115,29 @@ const TestingResult = ({ handleTesting }: IProps) => {
         flex={1}
         className={styles.selectFilesCollapse}
       >
-        {chunks.map((x) => (
-          <Card key={x.chunk_id} title={<ChunkTitle item={x}></ChunkTitle>}>
-            <Flex gap={'middle'}>
-              {x.img_id && (
-                <Popover
-                  placement="left"
-                  content={
-                    <Image
-                      id={x.img_id}
-                      className={styles.imagePreview}
-                    ></Image>
-                  }
-                >
-                  <Image id={x.img_id} className={styles.image}></Image>
-                </Popover>
-              )}
-              <div>{x.content_with_weight}</div>
-            </Flex>
-          </Card>
-        ))}
+        {loading === false && chunks && chunks.length > 0 ? (
+          chunks?.map((x) => (
+            <Card key={x.chunk_id} title={<ChunkTitle item={x}></ChunkTitle>}>
+              <div className="flex justify-center">
+                {showImage(x.doc_type_kwd) && (
+                  <Image
+                    id={x.image_id}
+                    className={'object-contain max-h-[30vh] w-full text-center'}
+                    src={`${api_host}/document/image/${x.image_id}`}
+                  ></Image>
+                )}
+              </div>
+              <div className="pt-4">{x.content_with_weight}</div>
+            </Card>
+          ))
+        ) : loading === false && chunks && chunks.length === 0 ? (
+          <Empty></Empty>
+        ) : null}
       </Flex>
       <Pagination
+        {...pagination}
         size={'small'}
-        showQuickJumper
-        current={pagination.current}
-        pageSize={pagination.pageSize}
         total={total}
-        showSizeChanger
         onChange={onChange}
       />
     </section>

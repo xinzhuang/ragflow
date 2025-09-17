@@ -1,11 +1,6 @@
 import { ReactComponent as ChatAppCube } from '@/assets/svg/chat-app-cube.svg';
 import RenameModal from '@/components/rename-modal';
-import {
-  CloudOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import {
   Avatar,
   Button,
@@ -17,44 +12,55 @@ import {
   Space,
   Spin,
   Tag,
+  Tooltip,
+  Typography,
 } from 'antd';
 import { MenuItemProps } from 'antd/lib/menu/MenuItem';
 import classNames from 'classnames';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import ChatConfigurationModal from './chat-configuration-modal';
 import ChatContainer from './chat-container';
 import {
-  useClickConversationCard,
-  useClickDialogCard,
   useDeleteConversation,
   useDeleteDialog,
   useEditDialog,
-  useFetchConversationListOnMount,
-  useFetchDialogOnMount,
-  useGetChatSearchParams,
   useHandleItemHover,
   useRenameConversation,
-  useSelectConversationListLoading,
   useSelectDerivedConversationList,
-  useSelectDialogListLoading,
-  useSelectFirstDialogOnMount,
 } from './hooks';
 
-import { useSetModalState, useTranslate } from '@/hooks/commonHooks';
-import { useSetSelectedRecord } from '@/hooks/logicHooks';
+import EmbedModal from '@/components/api-service/embed-modal';
+import { useShowEmbedModal } from '@/components/api-service/hooks';
+import SvgIcon from '@/components/svg-icon';
+import { useTheme } from '@/components/theme-provider';
+import { SharedFrom } from '@/constants/chat';
+import {
+  useClickConversationCard,
+  useClickDialogCard,
+  useFetchNextDialogList,
+  useGetChatSearchParams,
+} from '@/hooks/chat-hooks';
+import { useTranslate } from '@/hooks/common-hooks';
+import { useSetSelectedRecord } from '@/hooks/logic-hooks';
 import { IDialog } from '@/interfaces/database/chat';
-import ChatOverviewModal from './chat-overview-modal';
+import { PictureInPicture2 } from 'lucide-react';
 import styles from './index.less';
 
+const { Text } = Typography;
+
 const Chat = () => {
-  const dialogList = useSelectFirstDialogOnMount();
+  const { data: dialogList, loading: dialogLoading } = useFetchNextDialogList();
   const { onRemoveDialog } = useDeleteDialog();
   const { onRemoveConversation } = useDeleteConversation();
   const { handleClickDialog } = useClickDialogCard();
   const { handleClickConversation } = useClickConversationCard();
   const { dialogId, conversationId } = useGetChatSearchParams();
-  const { list: conversationList, addTemporaryConversation } =
-    useSelectDerivedConversationList();
+  const { theme } = useTheme();
+  const {
+    list: conversationList,
+    addTemporaryConversation,
+    loading: conversationLoading,
+  } = useSelectDerivedConversationList();
   const { activated, handleItemEnter, handleItemLeave } = useHandleItemHover();
   const {
     activated: conversationActivated,
@@ -78,17 +84,11 @@ const Chat = () => {
     hideDialogEditModal,
     showDialogEditModal,
   } = useEditDialog();
-  const dialogLoading = useSelectDialogListLoading();
-  const conversationLoading = useSelectConversationListLoading();
   const { t } = useTranslate('chat');
-  const {
-    visible: overviewVisible,
-    hideModal: hideOverviewModal,
-    showModal: showOverviewModal,
-  } = useSetModalState();
   const { currentRecord, setRecord } = useSetSelectedRecord<IDialog>();
-
-  useFetchDialogOnMount(dialogId, true);
+  const [controller, setController] = useState(new AbortController());
+  const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
+    useShowEmbedModal();
 
   const handleAppCardEnter = (id: string) => () => {
     handleItemEnter(id);
@@ -120,7 +120,7 @@ const Chat = () => {
       info?.domEvent?.preventDefault();
       info?.domEvent?.stopPropagation();
       setRecord(dialog);
-      showOverviewModal();
+      showEmbedModal();
     };
 
   const handleRemoveConversation =
@@ -139,30 +139,27 @@ const Chat = () => {
       showConversationRenameModal(conversationId);
     };
 
-  const handleDialogCardClick = (dialogId: string) => () => {
-    handleClickDialog(dialogId);
-  };
+  const handleDialogCardClick = useCallback(
+    (dialogId: string) => () => {
+      handleClickDialog(dialogId);
+    },
+    [handleClickDialog],
+  );
 
-  const handleConversationCardClick = (dialogId: string) => () => {
-    handleClickConversation(dialogId);
-  };
+  const handleConversationCardClick = useCallback(
+    (conversationId: string, isNew: boolean) => () => {
+      handleClickConversation(conversationId, isNew ? 'true' : '');
+      setController((pre) => {
+        pre.abort();
+        return new AbortController();
+      });
+    },
+    [handleClickConversation],
+  );
 
   const handleCreateTemporaryConversation = useCallback(() => {
     addTemporaryConversation();
   }, [addTemporaryConversation]);
-
-  const items: MenuProps['items'] = [
-    {
-      key: '1',
-      onClick: handleCreateTemporaryConversation,
-      label: (
-        <Space>
-          <PlusOutlined />
-          {t('newChat')}
-        </Space>
-      ),
-    },
-  ];
 
   const buildAppItems = (dialog: IDialog) => {
     const dialogId = dialog.id;
@@ -195,8 +192,9 @@ const Chat = () => {
         onClick: handleShowOverviewModal(dialog),
         label: (
           <Space>
-            <CloudOutlined />
-            {t('overview')}
+            {/* <KeyOutlined /> */}
+            <PictureInPicture2 className="size-4" />
+            {t('embedIntoSite', { keyPrefix: 'common' })}
           </Space>
         ),
       },
@@ -233,8 +231,6 @@ const Chat = () => {
     return appItems;
   };
 
-  useFetchConversationListOnMount();
-
   return (
     <Flex className={styles.chatWrapper}>
       <Flex className={styles.chatAppWrapper}>
@@ -250,7 +246,9 @@ const Chat = () => {
                   key={x.id}
                   hoverable
                   className={classNames(styles.chatAppCard, {
-                    [styles.chatAppCardSelected]: dialogId === x.id,
+                    [theme === 'dark'
+                      ? styles.chatAppCardSelectedDark
+                      : styles.chatAppCardSelected]: dialogId === x.id,
                   })}
                   onMouseEnter={handleAppCardEnter(x.id)}
                   onMouseLeave={handleItemLeave}
@@ -260,7 +258,14 @@ const Chat = () => {
                     <Space size={15}>
                       <Avatar src={x.icon} shape={'square'} />
                       <section>
-                        <b>{x.name}</b>
+                        <b>
+                          <Text
+                            ellipsis={{ tooltip: x.name }}
+                            style={{ width: 130 }}
+                          >
+                            {x.name}
+                          </Text>
+                        </b>
                         <div>{x.description}</div>
                       </section>
                     </Space>
@@ -292,10 +297,15 @@ const Chat = () => {
               <b>{t('chat')}</b>
               <Tag>{conversationList.length}</Tag>
             </Space>
-            <Dropdown menu={{ items }}>
-              {/* <FormOutlined /> */}
-              <PlusOutlined />
-            </Dropdown>
+            <Tooltip title={t('newChat')}>
+              <div>
+                <SvgIcon
+                  name="plus-circle-fill"
+                  width={20}
+                  onClick={handleCreateTemporaryConversation}
+                ></SvgIcon>
+              </div>
+            </Tooltip>
           </Flex>
           <Divider></Divider>
           <Flex vertical gap={10} className={styles.chatTitleContent}>
@@ -307,26 +317,37 @@ const Chat = () => {
                 <Card
                   key={x.id}
                   hoverable
-                  onClick={handleConversationCardClick(x.id)}
+                  onClick={handleConversationCardClick(x.id, x.is_new)}
                   onMouseEnter={handleConversationCardEnter(x.id)}
                   onMouseLeave={handleConversationItemLeave}
                   className={classNames(styles.chatTitleCard, {
-                    [styles.chatTitleCardSelected]: x.id === conversationId,
+                    [theme === 'dark'
+                      ? styles.chatTitleCardSelectedDark
+                      : styles.chatTitleCardSelected]: x.id === conversationId,
                   })}
                 >
                   <Flex justify="space-between" align="center">
-                    <div>{x.name}</div>
-                    {conversationActivated === x.id && x.id !== '' && (
-                      <section>
-                        <Dropdown
-                          menu={{ items: buildConversationItems(x.id) }}
-                        >
-                          <ChatAppCube
-                            className={styles.cubeIcon}
-                          ></ChatAppCube>
-                        </Dropdown>
-                      </section>
-                    )}
+                    <div>
+                      <Text
+                        ellipsis={{ tooltip: x.name }}
+                        style={{ width: 150 }}
+                      >
+                        {x.name}
+                      </Text>
+                    </div>
+                    {conversationActivated === x.id &&
+                      x.id !== '' &&
+                      !x.is_new && (
+                        <section>
+                          <Dropdown
+                            menu={{ items: buildConversationItems(x.id) }}
+                          >
+                            <ChatAppCube
+                              className={styles.cubeIcon}
+                            ></ChatAppCube>
+                          </Dropdown>
+                        </section>
+                      )}
                   </Flex>
                 </Card>
               ))}
@@ -335,16 +356,18 @@ const Chat = () => {
         </Flex>
       </Flex>
       <Divider type={'vertical'} className={styles.divider}></Divider>
-      <ChatContainer></ChatContainer>
-      <ChatConfigurationModal
-        visible={dialogEditVisible}
-        initialDialog={initialDialog}
-        showModal={showDialogEditModal}
-        hideModal={hideDialogEditModal}
-        loading={dialogSettingLoading}
-        onOk={onDialogEditOk}
-        clearDialog={clearDialog}
-      ></ChatConfigurationModal>
+      <ChatContainer controller={controller}></ChatContainer>
+      {dialogEditVisible && (
+        <ChatConfigurationModal
+          visible={dialogEditVisible}
+          initialDialog={initialDialog}
+          showModal={showDialogEditModal}
+          hideModal={hideDialogEditModal}
+          loading={dialogSettingLoading}
+          onOk={onDialogEditOk}
+          clearDialog={clearDialog}
+        ></ChatConfigurationModal>
+      )}
       <RenameModal
         visible={conversationRenameVisible}
         hideModal={hideConversationRenameModal}
@@ -352,11 +375,17 @@ const Chat = () => {
         initialName={initialConversationName}
         loading={conversationRenameLoading}
       ></RenameModal>
-      <ChatOverviewModal
-        visible={overviewVisible}
-        hideModal={hideOverviewModal}
-        dialog={currentRecord}
-      ></ChatOverviewModal>
+
+      {embedVisible && (
+        <EmbedModal
+          visible={embedVisible}
+          hideModal={hideEmbedModal}
+          token={currentRecord.id}
+          form={SharedFrom.Chat}
+          beta={beta}
+          isAgent={false}
+        ></EmbedModal>
+      )}
     </Flex>
   );
 };

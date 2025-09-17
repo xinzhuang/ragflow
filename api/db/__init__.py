@@ -27,6 +27,7 @@ class UserTenantRole(StrEnum):
     OWNER = 'owner'
     ADMIN = 'admin'
     NORMAL = 'normal'
+    INVITE = 'invite'
 
 
 class TenantPermission(StrEnum):
@@ -48,12 +49,15 @@ class FileType(StrEnum):
     FOLDER = 'folder'
     OTHER = "other"
 
+VALID_FILE_TYPES = {FileType.PDF, FileType.DOC, FileType.VISUAL, FileType.AURAL, FileType.VIRTUAL, FileType.FOLDER, FileType.OTHER}
 
 class LLMType(StrEnum):
     CHAT = 'chat'
     EMBEDDING = 'embedding'
     SPEECH2TEXT = 'speech2text'
     IMAGE2TEXT = 'image2text'
+    RERANK = 'rerank'
+    TTS    = 'tts'
 
 
 class ChatStyle(StrEnum):
@@ -71,6 +75,9 @@ class TaskStatus(StrEnum):
     FAIL = "4"
 
 
+VALID_TASK_STATUS     = {TaskStatus.UNSTART, TaskStatus.RUNNING, TaskStatus.CANCEL, TaskStatus.DONE, TaskStatus.FAIL}
+
+
 class ParserType(StrEnum):
     PRESENTATION = "presentation"
     LAWS = "laws"
@@ -83,11 +90,36 @@ class ParserType(StrEnum):
     NAIVE = "naive"
     PICTURE = "picture"
     ONE = "one"
+    AUDIO = "audio"
+    EMAIL = "email"
+    KG = "knowledge_graph"
+    TAG = "tag"
 
 
 class FileSource(StrEnum):
     LOCAL = ""
     KNOWLEDGEBASE = "knowledgebase"
     S3 = "s3"
+
+
+class CanvasType(StrEnum):
+    ChatBot = "chatbot"
+    DocBot = "docbot"
+
+
+class CanvasCategory(StrEnum):
+    Agent = "agent_canvas"
+    DataFlow = "dataflow_canvas"
+
+VALID_CAVAS_CATEGORIES = {CanvasCategory.Agent, CanvasCategory.DataFlow}
+
+
+class MCPServerType(StrEnum):
+    SSE = "sse"
+    STREAMABLE_HTTP = "streamable-http"
+
+
+VALID_MCP_SERVER_TYPES = {MCPServerType.SSE, MCPServerType.STREAMABLE_HTTP}
+
 
 KNOWLEDGEBASE_FOLDER_NAME=".knowledgebase"

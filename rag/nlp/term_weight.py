@@ -1,4 +1,20 @@
-# -*- coding: utf-8 -*-
+    #
+#  Copyright 2024 The InfiniFlow Authors. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
+
+import logging
 import math
 import json
 import re
@@ -46,10 +62,10 @@ class Dealer:
             res = {}
             f = open(fnm, "r")
             while True:
-                l = f.readline()
-                if not l:
+                line = f.readline()
+                if not line:
                     break
-                arr = l.replace("\n", "").split("\t")
+                arr = line.replace("\n", "").split("\t")
                 if len(arr) < 2:
                     res[arr[0]] = 0
                 else:
@@ -66,12 +82,12 @@ class Dealer:
         self.ne, self.df = {}, {}
         try:
             self.ne = json.load(open(os.path.join(fnm, "ner.json"), "r"))
-        except Exception as e:
-            print("[WARNING] Load ner.json FAIL!")
+        except Exception:
+            logging.warning("Load ner.json FAIL!")
         try:
             self.df = load_dict(os.path.join(fnm, "term.freq"))
-        except Exception as e:
-            print("[WARNING] Load term.freq FAIL!")
+        except Exception:
+            logging.warning("Load term.freq FAIL!")
 
     def pretoken(self, txt, num=False, stpwd=True):
         patt = [
@@ -83,7 +99,7 @@ class Dealer:
             txt = re.sub(p, r, txt)
 
         res = []
-        for t in rag_tokenizer.tokenize(txt).split(" "):
+        for t in rag_tokenizer.tokenize(txt).split():
             tk = t
             if (stpwd and tk in self.stop_words) or (
                     re.match(r"[0-9]$", tk) and not num):
@@ -92,7 +108,7 @@ class Dealer:
                 if re.match(p, t):
                     tk = "#"
                     break
-            tk = re.sub(r"([\+\\-])", r"\\\1", tk)
+            #tk = re.sub(r"([\+\\-])", r"\\\1", tk)
             if tk != "#" and tk:
                 res.append(tk)
         return res
@@ -104,7 +120,7 @@ class Dealer:
         while i < len(tks):
             j = i
             if i == 0 and oneTerm(tks[i]) and len(
-                    tks) > 1 and len(tks[i + 1]) > 1:  # 多 工位
+                    tks) > 1 and (len(tks[i + 1]) > 1 and not re.match(r"[0-9a-zA-Z]", tks[i + 1])):  # 多 工位
                 res.append(" ".join(tks[0:2]))
                 i = 2
                 continue
@@ -134,7 +150,7 @@ class Dealer:
 
     def split(self, txt):
         tks = []
-        for t in re.sub(r"[ \t]+", " ", txt).split(" "):
+        for t in re.sub(r"[ \t]+", " ", txt).split():
             if tks and re.match(r".*[a-zA-Z]$", tks[-1]) and \
                re.match(r".*[a-zA-Z]$", t) and tks and \
                self.ne.get(t, "") != "func" and self.ne.get(tks[-1], "") != "func":
@@ -143,16 +159,16 @@ class Dealer:
                 tks.append(t)
         return tks
 
-    def weights(self, tks):
-        def skill(t):
-            if t not in self.sk:
-                return 1
-            return 6
+    def weights(self, tks, preprocess=True):
+        num_pattern = re.compile(r"[0-9,.]{2,}$")
+        short_letter_pattern = re.compile(r"[a-z]{1,2}$")
+        num_space_pattern = re.compile(r"[0-9. -]{2,}$")
+        letter_pattern = re.compile(r"[a-z. -]+$")
 
         def ner(t):
-            if re.match(r"[0-9,.]{2,}$", t):
+            if num_pattern.match(t):
                 return 2
-            if re.match(r"[a-z]{1,2}$", t):
+            if short_letter_pattern.match(t):
                 return 0.01
             if not self.ne or t not in self.ne:
                 return 1
@@ -173,16 +189,16 @@ class Dealer:
             return 1
 
         def freq(t):
-            if re.match(r"[0-9. -]{2,}$", t):
+            if num_space_pattern.match(t):
                 return 3
             s = rag_tokenizer.freq(t)
-            if not s and re.match(r"[a-z. -]+$", t):
+            if not s and letter_pattern.match(t):
                 return 300
             if not s:
                 s = 0
 
             if not s and len(t) >= 4:
-                s = [tt for tt in rag_tokenizer.fine_grained_tokenize(t).split(" ") if len(tt) > 1]
+                s = [tt for tt in rag_tokenizer.fine_grained_tokenize(t).split() if len(tt) > 1]
                 if len(s) > 1:
                     s = np.min([freq(tt) for tt in s]) / 6.
                 else:
@@ -191,14 +207,14 @@ class Dealer:
             return max(s, 10)
 
         def df(t):
-            if re.match(r"[0-9. -]{2,}$", t):
+            if num_space_pattern.match(t):
                 return 5
             if t in self.df:
                 return self.df[t] + 3
-            elif re.match(r"[a-z. -]+$", t):
+            elif letter_pattern.match(t):
                 return 300
             elif len(t) >= 4:
-                s = [tt for tt in rag_tokenizer.fine_grained_tokenize(t).split(" ") if len(tt) > 1]
+                s = [tt for tt in rag_tokenizer.fine_grained_tokenize(t).split() if len(tt) > 1]
                 if len(s) > 1:
                     return max(3, np.min([df(tt) for tt in s]) / 6.)
 
@@ -207,14 +223,22 @@ class Dealer:
         def idf(s, N): return math.log10(10 + ((N - s + 0.5) / (s + 0.5)))
 
         tw = []
-        for tk in tks:
-            tt = self.tokenMerge(self.pretoken(tk, True))
-            idf1 = np.array([idf(freq(t), 10000000) for t in tt])
-            idf2 = np.array([idf(df(t), 1000000000) for t in tt])
+        if not preprocess:
+            idf1 = np.array([idf(freq(t), 10000000) for t in tks])
+            idf2 = np.array([idf(df(t), 1000000000) for t in tks])
             wts = (0.3 * idf1 + 0.7 * idf2) * \
-                np.array([ner(t) * postag(t) for t in tt])
-
-            tw.extend(zip(tt, wts))
+                np.array([ner(t) * postag(t) for t in tks])
+            wts = [s for s in wts]
+            tw = list(zip(tks, wts))
+        else:
+            for tk in tks:
+                tt = self.tokenMerge(self.pretoken(tk, True))
+                idf1 = np.array([idf(freq(t), 10000000) for t in tt])
+                idf2 = np.array([idf(df(t), 1000000000) for t in tt])
+                wts = (0.3 * idf1 + 0.7 * idf2) * \
+                    np.array([ner(t) * postag(t) for t in tt])
+                wts = [s for s in wts]
+                tw.extend(zip(tt, wts))
 
         S = np.sum([s for _, s in tw])
         return [(t, s / S) for t, s in tw]

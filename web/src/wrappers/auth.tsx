@@ -1,12 +1,13 @@
-import { useAuth } from '@/hooks/authHook';
-import { Navigate, Outlet } from 'umi';
+import { useAuth } from '@/hooks/auth-hooks';
+import { redirectToLogin } from '@/utils/authorization-util';
+import { Outlet } from 'umi';
 
 export default () => {
   const { isLogin } = useAuth();
   if (isLogin === true) {
     return <Outlet />;
   } else if (isLogin === false) {
-    return <Navigate to="/login" />;
+    redirectToLogin();
   }
 
   return <></>;

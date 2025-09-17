@@ -1,5 +1,21 @@
-import copy
+#
+#  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+#
 
+import copy
+import re
 import numpy as np
 import cv2
 from shapely.geometry import Polygon
@@ -7,7 +23,7 @@ import pyclipper
 
 
 def build_post_process(config, global_config=None):
-    support_dict = ['DBPostProcess', 'CTCLabelDecode']
+    support_dict = {'DBPostProcess': DBPostProcess, 'CTCLabelDecode': CTCLabelDecode}
 
     config = copy.deepcopy(config)
     module_name = config.pop('name')
@@ -15,13 +31,14 @@ def build_post_process(config, global_config=None):
         return
     if global_config is not None:
         config.update(global_config)
-    assert module_name in support_dict, Exception(
-        'post process only support {}'.format(support_dict))
-    module_class = eval(module_name)(**config)
-    return module_class
+    module_class = support_dict.get(module_name)
+    if module_class is None:
+        raise ValueError(
+            'post process only support {}'.format(list(support_dict)))
+    return module_class(**config)
 
 
-class DBPostProcess(object):
+class DBPostProcess:
     """
     The post process for Differentiable Binarization (DB).
     """
@@ -108,7 +125,7 @@ class DBPostProcess(object):
         outs = cv2.findContours((bitmap * 255).astype(np.uint8), cv2.RETR_LIST,
                                 cv2.CHAIN_APPROX_SIMPLE)
         if len(outs) == 3:
-            img, contours, _ = outs[0], outs[1], outs[2]
+            _img, contours, _ = outs[0], outs[1], outs[2]
         elif len(outs) == 2:
             contours, _ = outs[0], outs[1]
 
@@ -242,7 +259,7 @@ class DBPostProcess(object):
         return boxes_batch
 
 
-class BaseRecLabelDecode(object):
+class BaseRecLabelDecode:
     """ Convert between text-label and text-index """
 
     def __init__(self, character_dict_path=None, use_space_char=False):

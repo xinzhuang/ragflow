@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   Row,
-  Slider,
   Switch,
   Table,
   TableProps,
@@ -29,15 +28,13 @@ import {
 } from '../interface';
 import { EditableCell, EditableRow } from './editable-cell';
 
-import { useTranslate } from '@/hooks/commonHooks';
+import { CrossLanguageItem } from '@/components/cross-language-item';
+import Rerank from '@/components/rerank';
+import TopNItem from '@/components/top-n-item';
+import { UseKnowledgeGraphItem } from '@/components/use-knowledge-graph-item';
+import { useTranslate } from '@/hooks/common-hooks';
 import { useSelectPromptConfigParameters } from '../hooks';
 import styles from './index.less';
-
-type FieldType = {
-  similarity_threshold?: number;
-  vector_similarity_weight?: number;
-  top_n?: number;
-};
 
 const PromptEngine = (
   { show }: ISegmentedContentProps,
@@ -164,18 +161,31 @@ const PromptEngine = (
       </Form.Item>
       <Divider></Divider>
       <SimilaritySlider isTooltipShown></SimilaritySlider>
-      <Form.Item<FieldType>
-        label={t('topN')}
-        name={'top_n'}
-        initialValue={8}
-        tooltip={t('topNTip')}
+      <TopNItem></TopNItem>
+      <Form.Item
+        label={t('multiTurn')}
+        tooltip={t('multiTurnTip')}
+        name={['prompt_config', 'refine_multiturn']}
+        initialValue={false}
       >
-        <Slider max={30} />
+        <Switch></Switch>
       </Form.Item>
-
+      <UseKnowledgeGraphItem
+        filedName={['prompt_config', 'use_kg']}
+      ></UseKnowledgeGraphItem>
+      <Form.Item
+        label={t('reasoning')}
+        tooltip={t('reasoningTip')}
+        name={['prompt_config', 'reasoning']}
+        initialValue={false}
+      >
+        <Switch></Switch>
+      </Form.Item>
+      <Rerank></Rerank>
+      <CrossLanguageItem></CrossLanguageItem>
       <section className={classNames(styles.variableContainer)}>
         <Row align={'middle'} justify="end">
-          <Col span={7} className={styles.variableAlign}>
+          <Col span={9} className={styles.variableAlign}>
             <label className={styles.variableLabel}>
               {t('variable')}
               <Tooltip title={t('variableTip')}>
@@ -183,7 +193,7 @@ const PromptEngine = (
               </Tooltip>
             </label>
           </Col>
-          <Col span={17} className={styles.variableAlign}>
+          <Col span={15} className={styles.variableAlign}>
             <Button size="small" onClick={handleAdd}>
               {t('add')}
             </Button>

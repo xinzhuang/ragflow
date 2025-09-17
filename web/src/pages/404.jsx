@@ -2,15 +2,18 @@ import { Button, Result } from 'antd';
 import { history } from 'umi';
 
 const NoFoundPage = () => {
-  return (<Result
-    status="404"
-    title="404"
-    subTitle="页面未找到，请输入正确的地址。"
-    extra={< Button type="primary" onClick={() => history.push('/')}>
-      返回主页
-    </Button>}
-  />
-  )
+  return (
+    <Result
+      status="404"
+      title="404"
+      subTitle="Page not found, please enter a correct address."
+      extra={
+        <Button type="primary" onClick={() => history.push('/')}>
+          Business
+        </Button>
+      }
+    />
+  );
 };
 
 export default NoFoundPage;

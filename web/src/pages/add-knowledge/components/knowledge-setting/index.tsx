@@ -1,12 +1,12 @@
 import { Col, Divider, Row, Spin, Typography } from 'antd';
 import CategoryPanel from './category-panel';
-import ConfigurationForm from './configuration';
+import { ConfigurationForm } from './configuration';
 import {
   useHandleChunkMethodChange,
   useSelectKnowledgeDetailsLoading,
 } from './hooks';
 
-import { useTranslate } from '@/hooks/commonHooks';
+import { useTranslate } from '@/hooks/common-hooks';
 import styles from './index.less';
 
 const { Title } = Typography;
